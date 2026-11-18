@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      result: ${{ steps.summary.outputs.result }}
+      comment_payload: ${{ steps.summary.outputs.comment_payload }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -68,12 +68,12 @@ jobs:
               '差分・A01の手計算・A08の四捨五入・A10の空欄・件数を確認してからマージします。',
             ].join('\n');
             await core.summary.addRaw(body).write();
-            core.setOutput('result', Buffer.from(body, 'utf8').toString('base64'));
+            core.setOutput('comment_payload', Buffer.from(body, 'utf8').toString('base64'));
 
   post-result:
     name: Post results to the pull request
     needs: unit-prices
-    if: ${{ !cancelled() && needs.unit-prices.outputs.result != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && needs.unit-prices.outputs.comment_payload != '' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -82,7 +82,7 @@ jobs:
       - name: Create or update the result comment
         uses: actions/github-script@v8
         env:
-          RESULT: ${{ needs.unit-prices.outputs.result }}
+          RESULT: ${{ needs.unit-prices.outputs.comment_payload }}
         with:
           script: |
             const marker = '<!-- ch09-unit-price-results -->';
