@@ -12,9 +12,8 @@ jobs:
     name: Calculate unit prices
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: write
+    outputs:
+      result: ${{ steps.summary.outputs.result }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,7 +26,8 @@ jobs:
         run: |
           python3 --version
           python3 unit_price.py 2>&1 | tee "$RUNNER_TEMP/ch09-unit-prices.txt"
-      - name: Publish results to the PR and Job Summary
+      - name: Write the Job Summary
+        id: summary
         if: ${{ !cancelled() && steps.calculate.outcome != 'skipped' && steps.calculate.outcome != '' }}
         uses: actions/github-script@v8
         env:
@@ -68,10 +68,26 @@ jobs:
               '差分・A01の手計算・A08の四捨五入・A10の空欄・件数を確認してからマージします。',
             ].join('\n');
             await core.summary.addRaw(body).write();
-            if (pr.head.repo.full_name !== context.payload.repository.full_name) {
-              core.notice('別リポジトリからのPRはJob Summaryで結果を確認してください。');
-              return;
-            }
+            core.setOutput('result', Buffer.from(body, 'utf8').toString('base64'));
+
+  post-result:
+    name: Post results to the pull request
+    needs: unit-prices
+    if: ${{ !cancelled() && needs.unit-prices.outputs.result != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create or update the result comment
+        uses: actions/github-script@v8
+        env:
+          RESULT: ${{ needs.unit-prices.outputs.result }}
+        with:
+          script: |
+            const marker = '<!-- ch09-unit-price-results -->';
+            const body = Buffer.from(process.env.RESULT, 'base64').toString('utf8');
+            const pr = context.payload.pull_request;
             const current = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number });
             if (current.data.head.sha !== pr.head.sha) {
               core.notice('新しいコミットがあるため、古い実行結果のPRコメント更新を省略します。');
